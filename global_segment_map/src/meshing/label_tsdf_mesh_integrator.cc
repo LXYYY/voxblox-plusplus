@@ -70,8 +70,10 @@ bool MeshLabelIntegrator::generateMesh(bool only_mesh_updated_blocks,
 
   if (only_mesh_updated_blocks) {
     BlockIndexList all_label_blocks;
-    sdf_layer_const_->getAllUpdatedBlocks(&all_tsdf_blocks);
-    label_layer_mutable_ptr_->getAllUpdatedBlocks(&all_label_blocks);
+    sdf_layer_const_->getAllUpdatedBlocks(voxblox::Update::kMesh,
+                                          &all_tsdf_blocks);
+    label_layer_mutable_ptr_->getAllUpdatedBlocks(voxblox::Update::kMesh,
+                                                  &all_label_blocks);
     if (all_tsdf_blocks.size() == 0u && all_label_blocks.size() == 0u) {
       return false;
     }
