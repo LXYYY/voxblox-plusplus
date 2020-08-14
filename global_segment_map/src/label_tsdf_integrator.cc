@@ -600,7 +600,7 @@ void LabelTsdfIntegrator::integrateVoxel(
         global_voxel_idx, &tsdf_block, &block_idx);
 
     updateTsdfVoxel(origin, merged_point_G, global_voxel_idx, merged_color,
-                    merged_weight, tsdf_voxel);
+                    merged_weight, tsdf_voxel, false);
 
     // TODO(margaritaG): parametrize.
     // If voxel carving is enabled, then only allocate the label voxels
