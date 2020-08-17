@@ -1,0 +1,19 @@
+<launch>
+  <arg name="play_bag" default="true" />
+  <arg name="bag_file" default="/path/to/data.bag"/>
+  <arg name="visualize" default="true" />
+
+  <include file="$(find gsm_node)/launch/vpp_pipeline.launch">
+    <arg name="scene_name" value="tum_fr2" />
+    <arg name="sensor_name" value="kinect" />
+    <arg name="visualize" value="$(arg visualize)" />
+  </include>
+
+  <node name="bag" pkg="rosbag" type="play" output="screen" args="--delay 5 -r 0.4 $(arg bag_file)" if="$(arg play_bag)">
+    <remap from="/camera/rgb/image_color" to="/camera/rgb/image_raw" />
+    <remap from="/camera/rgb/camera_info" to="/camera/rgb/camera_info" />
+    <remap from="/camera/depth/image" to="/camera/depth/image_raw" />
+    <remap from="/camera/depth/camera_info" to="/camera/depth/camera_info" />
+  </node>
+
+</launch>
