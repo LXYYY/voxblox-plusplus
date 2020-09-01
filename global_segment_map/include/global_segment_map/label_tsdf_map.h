@@ -58,6 +58,10 @@ class LabelTsdfMap {
     tsdf_layer_.reset(tsdf_map->getTsdfLayerPtr());
   }
 
+  inline void setTsdfLayer(Layer<TsdfVoxel>* tsdf_layer){
+    tsdf_layer_.reset(tsdf_layer);
+  }
+
   inline Layer<TsdfVoxel>* getTsdfLayerPtr() { return tsdf_layer_.get(); }
   inline const Layer<TsdfVoxel>& getTsdfLayer() const { return *tsdf_layer_; }
 

@@ -32,7 +32,7 @@ typedef std::pair<Layer<TsdfVoxel>, Layer<LabelVoxel>> LayerPair;
 
 class Controller {
  public:
-  Controller(ros::NodeHandle* node_handle);
+  Controller(const ros::NodeHandle& node_handle);
 
   virtual ~Controller();
 
@@ -139,7 +139,7 @@ class Controller {
       std::unordered_map<InstanceLabel, LabelTsdfMap::LayerPair>*
           instance_label_to_layers);
 
-  ros::NodeHandle* node_handle_private_;
+  ros::NodeHandle node_handle_private_;
 
   tf::TransformListener tf_listener_;
   tf2_ros::TransformBroadcaster tf_broadcaster_;

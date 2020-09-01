@@ -22,7 +22,7 @@ int main(int argc, char** argv) {
             << "Voxblox++ Copyright (C) 2016-2020 ASL, ETH Zurich." << endl
             << endl;
 
-  controller = new voxblox::voxblox_gsm::Controller(&node_handle_private);
+  controller = new voxblox::voxblox_gsm::Controller(node_handle_private);
 
   ros::ServiceServer reset_map_srv;
   controller->advertiseResetMapService(&reset_map_srv);

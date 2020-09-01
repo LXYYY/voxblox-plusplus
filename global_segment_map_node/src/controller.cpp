@@ -120,7 +120,7 @@ std::string classes[81] = {"BG",
                            "hair drier",
                            "toothbrush"};
 
-Controller::Controller(ros::NodeHandle* node_handle_private)
+Controller::Controller(const ros::NodeHandle& node_handle_private)
     : node_handle_private_(node_handle_private),
       // Increased time limit for lookup in the past of tf messages
       // to give some slack to the pipeline and not lose any messages.
@@ -136,25 +136,24 @@ Controller::Controller(ros::NodeHandle* node_handle_private)
       enable_semantic_instance_segmentation_(true),
       publish_object_bbox_(false),
       use_label_propagation_(true) {
-  CHECK_NOTNULL(node_handle_private_);
 
   bool verbose_log = false;
-  node_handle_private_->param<bool>("debug/verbose_log", verbose_log,
+  node_handle_private_.param<bool>("debug/verbose_log", verbose_log,
                                     verbose_log);
 
   if (verbose_log) {
     FLAGS_stderrthreshold = 0;
   }
 
-  node_handle_private_->param<std::string>("world_frame_id", world_frame_,
+  node_handle_private_.param<std::string>("world_frame_id", world_frame_,
                                            world_frame_);
 
   // Workaround for OS X on mac mini not having specializations for float
   // for some reason.
   int voxels_per_side = map_config_.voxels_per_side;
-  node_handle_private_->param<FloatingPoint>(
+  node_handle_private_.param<FloatingPoint>(
       "voxblox/voxel_size", map_config_.voxel_size, map_config_.voxel_size);
-  node_handle_private_->param<int>("voxblox/voxels_per_side", voxels_per_side,
+  node_handle_private_.param<int>("voxblox/voxels_per_side", voxels_per_side,
                                    voxels_per_side);
   if (!isPowerOfTwo(voxels_per_side)) {
     LOG(ERROR)
@@ -171,20 +170,20 @@ Controller::Controller(ros::NodeHandle* node_handle_private)
   FloatingPoint truncation_distance_factor = 5.0f;
   tsdf_integrator_config_.max_ray_length_m = 4.0f;
 
-  node_handle_private_->param<bool>(
+  node_handle_private_.param<bool>(
       "voxblox/voxel_carving_enabled",
       tsdf_integrator_config_.voxel_carving_enabled,
       tsdf_integrator_config_.voxel_carving_enabled);
-  node_handle_private_->param<bool>("voxblox/allow_clear",
+  node_handle_private_.param<bool>("voxblox/allow_clear",
                                     tsdf_integrator_config_.allow_clear,
                                     tsdf_integrator_config_.allow_clear);
-  node_handle_private_->param<FloatingPoint>(
+  node_handle_private_.param<FloatingPoint>(
       "voxblox/truncation_distance_factor", truncation_distance_factor,
       truncation_distance_factor);
-  node_handle_private_->param<FloatingPoint>(
+  node_handle_private_.param<FloatingPoint>(
       "voxblox/min_ray_length_m", tsdf_integrator_config_.min_ray_length_m,
       tsdf_integrator_config_.min_ray_length_m);
-  node_handle_private_->param<FloatingPoint>(
+  node_handle_private_.param<FloatingPoint>(
       "voxblox/max_ray_length_m", tsdf_integrator_config_.max_ray_length_m,
       tsdf_integrator_config_.max_ray_length_m);
 
@@ -192,7 +191,7 @@ Controller::Controller(ros::NodeHandle* node_handle_private)
       map_config_.voxel_size * truncation_distance_factor;
 
   std::string method("merged");
-  node_handle_private_->param<std::string>("method", method, method);
+  node_handle_private_.param<std::string>("method", method, method);
   if (method.compare("merged") == 0) {
     tsdf_integrator_config_.enable_anti_grazing = false;
   } else if (method.compare("merged_discard") == 0) {
@@ -202,20 +201,20 @@ Controller::Controller(ros::NodeHandle* node_handle_private)
   }
 
   // Determine label integrator parameters.
-  node_handle_private_->param<bool>(
+  node_handle_private_.param<bool>(
       "pairwise_confidence_merging/enable_pairwise_confidence_merging",
       label_tsdf_integrator_config_.enable_pairwise_confidence_merging,
       label_tsdf_integrator_config_.enable_pairwise_confidence_merging);
-  node_handle_private_->param<FloatingPoint>(
+  node_handle_private_.param<FloatingPoint>(
       "pairwise_confidence_merging/merging_min_overlap_ratio",
       label_tsdf_integrator_config_.merging_min_overlap_ratio,
       label_tsdf_integrator_config_.merging_min_overlap_ratio);
-  node_handle_private_->param<int>(
+  node_handle_private_.param<int>(
       "pairwise_confidence_merging/merging_min_frame_count",
       label_tsdf_integrator_config_.merging_min_frame_count,
       label_tsdf_integrator_config_.merging_min_frame_count);
 
-  node_handle_private_->param<bool>(
+  node_handle_private_.param<bool>(
       "semantic_instance_segmentation/enable_semantic_instance_segmentation",
       label_tsdf_integrator_config_.enable_semantic_instance_segmentation,
       label_tsdf_integrator_config_.enable_semantic_instance_segmentation);
@@ -224,7 +223,7 @@ Controller::Controller(ros::NodeHandle* node_handle_private)
       label_tsdf_integrator_config_.enable_semantic_instance_segmentation;
 
   std::string class_task("coco80");
-  node_handle_private_->param<std::string>(
+  node_handle_private_.param<std::string>(
       "semantic_instance_segmentation/class_task", class_task, class_task);
   if (class_task.compare("coco80") == 0) {
     label_tsdf_mesh_config_.class_task = SemanticColorMap::ClassTask ::kCoco80;
@@ -234,10 +233,10 @@ Controller::Controller(ros::NodeHandle* node_handle_private)
     label_tsdf_mesh_config_.class_task = SemanticColorMap::ClassTask::kCoco80;
   }
 
-  node_handle_private_->param<bool>("icp/enable_icp",
+  node_handle_private_.param<bool>("icp/enable_icp",
                                     label_tsdf_integrator_config_.enable_icp,
                                     label_tsdf_integrator_config_.enable_icp);
-  node_handle_private_->param<bool>(
+  node_handle_private_.param<bool>(
       "icp/keep_track_of_icp_correction",
       label_tsdf_integrator_config_.keep_track_of_icp_correction,
       label_tsdf_integrator_config_.keep_track_of_icp_correction);
@@ -247,15 +246,15 @@ Controller::Controller(ros::NodeHandle* node_handle_private)
 
   // Visualization settings.
   bool visualize = false;
-  node_handle_private_->param<bool>("meshing/visualize", visualize, visualize);
+  node_handle_private_.param<bool>("meshing/visualize", visualize, visualize);
 
   bool save_visualizer_frames = false;
-  node_handle_private_->param<bool>("debug/save_visualizer_frames",
+  node_handle_private_.param<bool>("debug/save_visualizer_frames",
                                     save_visualizer_frames,
                                     save_visualizer_frames);
 
   bool multiple_visualizers = false;
-  node_handle_private_->param<bool>("debug/multiple_visualizers",
+  node_handle_private_.param<bool>("debug/multiple_visualizers",
                                     multiple_visualizers_,
                                     multiple_visualizers_);
 
@@ -271,10 +270,10 @@ Controller::Controller(ros::NodeHandle* node_handle_private)
 
   std::vector<double> camera_position;
   std::vector<double> clip_distances;
-  node_handle_private_->param<std::vector<double>>(
+  node_handle_private_.param<std::vector<double>>(
       "meshing/visualizer_parameters/camera_position", camera_position,
       camera_position);
-  node_handle_private_->param<std::vector<double>>(
+  node_handle_private_.param<std::vector<double>>(
       "meshing/visualizer_parameters/clip_distances", clip_distances,
       clip_distances);
   if (visualize) {
@@ -294,29 +293,29 @@ Controller::Controller(ros::NodeHandle* node_handle_private)
     viz_thread_ = std::thread(&Visualizer::visualizeMesh, visualizer_);
   }
 
-  node_handle_private_->param<bool>("publishers/publish_scene_map",
+  node_handle_private_.param<bool>("publishers/publish_scene_map",
                                     publish_scene_map_, publish_scene_map_);
-  node_handle_private_->param<bool>("publishers/publish_scene_mesh",
+  node_handle_private_.param<bool>("publishers/publish_scene_mesh",
                                     publish_scene_mesh_, publish_scene_mesh_);
-  node_handle_private_->param<bool>("publishers/publish_object_bbox",
+  node_handle_private_.param<bool>("publishers/publish_object_bbox",
                                     publish_object_bbox_, publish_object_bbox_);
 
-  node_handle_private_->param<bool>(
+  node_handle_private_.param<bool>(
       "use_label_propagation", use_label_propagation_, use_label_propagation_);
 
   // If set, use a timer to progressively update the mesh.
   double update_mesh_every_n_sec = 0.0;
-  node_handle_private_->param<double>("meshing/update_mesh_every_n_sec",
+  node_handle_private_.param<double>("meshing/update_mesh_every_n_sec",
                                       update_mesh_every_n_sec,
                                       update_mesh_every_n_sec);
 
   if (update_mesh_every_n_sec > 0.0) {
-    update_mesh_timer_ = node_handle_private_->createTimer(
+    update_mesh_timer_ = node_handle_private_.createTimer(
         ros::Duration(update_mesh_every_n_sec), &Controller::updateMeshEvent,
         this);
   }
 
-  node_handle_private_->param<std::string>("meshing/mesh_filename",
+  node_handle_private_.param<std::string>("meshing/mesh_filename",
                                            mesh_filename_, mesh_filename_);
 }
 
@@ -327,7 +326,7 @@ void Controller::subscribeSegmentPointCloudTopic(
   CHECK_NOTNULL(segment_point_cloud_sub);
   std::string segment_point_cloud_topic =
       "/depth_segmentation_node/object_segment";
-  node_handle_private_->param<std::string>("segment_point_cloud_topic",
+  node_handle_private_.param<std::string>("segment_point_cloud_topic",
                                            segment_point_cloud_topic,
                                            segment_point_cloud_topic);
   // TODO (margaritaG): make this a param once segments of a frame are
@@ -335,85 +334,85 @@ void Controller::subscribeSegmentPointCloudTopic(
   // Large queue size to give slack to the
   // pipeline and not lose any messages.
   constexpr int kSegmentPointCloudQueueSize = 6000;
-  *segment_point_cloud_sub = node_handle_private_->subscribe(
+  *segment_point_cloud_sub = node_handle_private_.subscribe(
       segment_point_cloud_topic, kSegmentPointCloudQueueSize,
       &Controller::segmentPointCloudCallback, this);
 }
 
 void Controller::advertiseMapTopic() {
   map_cloud_pub_ = new ros::Publisher(
-      node_handle_private_->advertise<pcl::PointCloud<PointMapType>>("map", 1,
+      node_handle_private_.advertise<pcl::PointCloud<PointMapType>>("map", 1,
                                                                      true));
 }
 
 void Controller::advertiseSceneMeshTopic() {
   scene_mesh_pub_ = new ros::Publisher(
-      node_handle_private_->advertise<voxblox_msgs::Mesh>("mesh", 1, true));
+      node_handle_private_.advertise<voxblox_msgs::Mesh>("mesh", 1, true));
 }
 
 void Controller::advertiseSceneCloudTopic() {
   scene_cloud_pub_ = new ros::Publisher(
-      node_handle_private_->advertise<pcl::PointCloud<pcl::PointXYZRGB>>(
+      node_handle_private_.advertise<pcl::PointCloud<pcl::PointXYZRGB>>(
           "cloud", 1, true));
 }
 
 void Controller::advertiseBboxTopic() {
   bbox_pub_ = new ros::Publisher(
-      node_handle_private_->advertise<visualization_msgs::Marker>("bbox", 1,
+      node_handle_private_.advertise<visualization_msgs::Marker>("bbox", 1,
                                                                   true));
 }
 
 void Controller::advertiseResetMapService(ros::ServiceServer* reset_map_srv) {
   CHECK_NOTNULL(reset_map_srv);
-  *reset_map_srv = node_handle_private_->advertiseService(
+  *reset_map_srv = node_handle_private_.advertiseService(
       "reset_map", &Controller::resetMapCallback, this);
 }
 
 void Controller::advertiseToggleIntegrationService(
     ros::ServiceServer* toggle_integration_srv) {
   CHECK_NOTNULL(toggle_integration_srv);
-  *toggle_integration_srv = node_handle_private_->advertiseService(
+  *toggle_integration_srv = node_handle_private_.advertiseService(
       "toggle_integration", &Controller::toggleIntegrationCallback, this);
 }
 
 void Controller::advertiseGetMapService(ros::ServiceServer* get_map_srv) {
   CHECK_NOTNULL(get_map_srv);
-  *get_map_srv = node_handle_private_->advertiseService(
+  *get_map_srv = node_handle_private_.advertiseService(
       "get_map", &Controller::getMapCallback, this);
 }
 
 void Controller::advertiseGenerateMeshService(
     ros::ServiceServer* generate_mesh_srv) {
   CHECK_NOTNULL(generate_mesh_srv);
-  *generate_mesh_srv = node_handle_private_->advertiseService(
+  *generate_mesh_srv = node_handle_private_.advertiseService(
       "generate_mesh", &Controller::generateMeshCallback, this);
 }
 
 void Controller::advertiseGetScenePointcloudService(
     ros::ServiceServer* get_scene_pointcloud) {
   CHECK_NOTNULL(get_scene_pointcloud);
-  *get_scene_pointcloud = node_handle_private_->advertiseService(
+  *get_scene_pointcloud = node_handle_private_.advertiseService(
       "get_scene_pointcloud", &Controller::getScenePointcloudCallback, this);
 }
 
 void Controller::advertiseSaveSegmentsAsMeshService(
     ros::ServiceServer* save_segments_as_mesh_srv) {
   CHECK_NOTNULL(save_segments_as_mesh_srv);
-  *save_segments_as_mesh_srv = node_handle_private_->advertiseService(
+  *save_segments_as_mesh_srv = node_handle_private_.advertiseService(
       "save_segments_as_mesh", &Controller::saveSegmentsAsMeshCallback, this);
 }
 
 void Controller::advertiseExtractInstancesService(
     ros::ServiceServer* extract_instances_srv) {
   CHECK_NOTNULL(extract_instances_srv);
-  *extract_instances_srv = node_handle_private_->advertiseService(
+  *extract_instances_srv = node_handle_private_.advertiseService(
       "extract_instances", &Controller::extractInstancesCallback, this);
 }
 
 void Controller::advertiseGetListSemanticInstancesService(
     ros::ServiceServer* get_list_semantic_instances_srv) {
   CHECK_NOTNULL(get_list_semantic_instances_srv);
-  *get_list_semantic_instances_srv = node_handle_private_->advertiseService(
+  *get_list_semantic_instances_srv = node_handle_private_.advertiseService(
       "get_list_semantic_instances",
       &Controller::getListSemanticInstancesCallback, this);
 }
@@ -421,7 +420,7 @@ void Controller::advertiseGetListSemanticInstancesService(
 void Controller::advertiseGetAlignedInstanceBoundingBoxService(
     ros::ServiceServer* get_instance_bounding_box_srv) {
   CHECK_NOTNULL(get_instance_bounding_box_srv);
-  *get_instance_bounding_box_srv = node_handle_private_->advertiseService(
+  *get_instance_bounding_box_srv = node_handle_private_.advertiseService(
       "get_aligned_instance_bbox",
       &Controller::getAlignedInstanceBoundingBoxCallback, this);
 }
