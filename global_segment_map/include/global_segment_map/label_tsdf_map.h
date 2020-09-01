@@ -7,6 +7,7 @@
 #include <glog/logging.h>
 #include <voxblox/core/common.h>
 #include <voxblox/core/layer.h>
+#include <voxblox/core/tsdf_map.h>
 #include <voxblox/core/voxel.h>
 
 #include "global_segment_map/label_voxel.h"
@@ -34,7 +35,28 @@ class LabelTsdfMap {
         highest_label_(0u),
         highest_instance_(0u) {}
 
+  explicit LabelTsdfMap(const TsdfMap::Config& config)
+      : LabelTsdfMap(getConfigFromTsdfMapConfig(config)) {}
+
+  explicit LabelTsdfMap(const TsdfMap::Config& config,
+                        const TsdfMap::Ptr& tsdf_map)
+      : LabelTsdfMap(getConfigFromTsdfMapConfig(config)) {
+    attachToTsdfMap(tsdf_map);
+  }
+
   virtual ~LabelTsdfMap() {}
+
+  const Config getConfigFromTsdfMapConfig(
+      const TsdfMap::Config& tsdfmap_config) {
+    Config config;
+    config.voxel_size = tsdfmap_config.tsdf_voxel_size;
+    config.voxels_per_side = tsdfmap_config.tsdf_voxels_per_side;
+    return config;
+  }
+
+  inline void attachToTsdfMap(const TsdfMap::Ptr& tsdf_map) {
+    tsdf_layer_.reset(tsdf_map->getTsdfLayerPtr());
+  }
 
   inline Layer<TsdfVoxel>* getTsdfLayerPtr() { return tsdf_layer_.get(); }
   inline const Layer<TsdfVoxel>& getTsdfLayer() const { return *tsdf_layer_; }
