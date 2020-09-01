@@ -34,6 +34,13 @@ class Controller {
  public:
   Controller(const ros::NodeHandle& node_handle);
 
+  Controller(
+      const ros::NodeHandle& node_handle,
+      const LabelTsdfMap::Config& map_config,
+      const LabelTsdfIntegrator::Config& tsdf_integrator_config,
+      const LabelTsdfIntegrator::LabelTsdfConfig& label_tsdf_integrator_config,
+      TsdfMap::Ptr map = nullptr);
+
   virtual ~Controller();
 
   void subscribeSegmentPointCloudTopic(
@@ -155,6 +162,7 @@ class Controller {
   LabelTsdfIntegrator::Config tsdf_integrator_config_;
   LabelTsdfIntegrator::LabelTsdfConfig label_tsdf_integrator_config_;
 
+  bool enable_tsdf_update_;
   std::shared_ptr<LabelTsdfMap> map_;
   std::shared_ptr<LabelTsdfIntegrator> integrator_;
 

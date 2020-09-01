@@ -136,17 +136,16 @@ Controller::Controller(const ros::NodeHandle& node_handle_private)
       enable_semantic_instance_segmentation_(true),
       publish_object_bbox_(false),
       use_label_propagation_(true) {
-
   bool verbose_log = false;
   node_handle_private_.param<bool>("debug/verbose_log", verbose_log,
-                                    verbose_log);
+                                   verbose_log);
 
   if (verbose_log) {
     FLAGS_stderrthreshold = 0;
   }
 
   node_handle_private_.param<std::string>("world_frame_id", world_frame_,
-                                           world_frame_);
+                                          world_frame_);
 
   // Workaround for OS X on mac mini not having specializations for float
   // for some reason.
@@ -154,7 +153,7 @@ Controller::Controller(const ros::NodeHandle& node_handle_private)
   node_handle_private_.param<FloatingPoint>(
       "voxblox/voxel_size", map_config_.voxel_size, map_config_.voxel_size);
   node_handle_private_.param<int>("voxblox/voxels_per_side", voxels_per_side,
-                                   voxels_per_side);
+                                  voxels_per_side);
   if (!isPowerOfTwo(voxels_per_side)) {
     LOG(ERROR)
         << "voxels_per_side must be a power of 2, setting to default value.";
@@ -175,8 +174,8 @@ Controller::Controller(const ros::NodeHandle& node_handle_private)
       tsdf_integrator_config_.voxel_carving_enabled,
       tsdf_integrator_config_.voxel_carving_enabled);
   node_handle_private_.param<bool>("voxblox/allow_clear",
-                                    tsdf_integrator_config_.allow_clear,
-                                    tsdf_integrator_config_.allow_clear);
+                                   tsdf_integrator_config_.allow_clear,
+                                   tsdf_integrator_config_.allow_clear);
   node_handle_private_.param<FloatingPoint>(
       "voxblox/truncation_distance_factor", truncation_distance_factor,
       truncation_distance_factor);
@@ -234,8 +233,8 @@ Controller::Controller(const ros::NodeHandle& node_handle_private)
   }
 
   node_handle_private_.param<bool>("icp/enable_icp",
-                                    label_tsdf_integrator_config_.enable_icp,
-                                    label_tsdf_integrator_config_.enable_icp);
+                                   label_tsdf_integrator_config_.enable_icp,
+                                   label_tsdf_integrator_config_.enable_icp);
   node_handle_private_.param<bool>(
       "icp/keep_track_of_icp_correction",
       label_tsdf_integrator_config_.keep_track_of_icp_correction,
@@ -250,13 +249,13 @@ Controller::Controller(const ros::NodeHandle& node_handle_private)
 
   bool save_visualizer_frames = false;
   node_handle_private_.param<bool>("debug/save_visualizer_frames",
-                                    save_visualizer_frames,
-                                    save_visualizer_frames);
+                                   save_visualizer_frames,
+                                   save_visualizer_frames);
 
   bool multiple_visualizers = false;
   node_handle_private_.param<bool>("debug/multiple_visualizers",
-                                    multiple_visualizers_,
-                                    multiple_visualizers_);
+                                   multiple_visualizers_,
+                                   multiple_visualizers_);
 
   mesh_merged_layer_.reset(new MeshLayer(map_->block_size()));
 
@@ -294,11 +293,11 @@ Controller::Controller(const ros::NodeHandle& node_handle_private)
   }
 
   node_handle_private_.param<bool>("publishers/publish_scene_map",
-                                    publish_scene_map_, publish_scene_map_);
+                                   publish_scene_map_, publish_scene_map_);
   node_handle_private_.param<bool>("publishers/publish_scene_mesh",
-                                    publish_scene_mesh_, publish_scene_mesh_);
+                                   publish_scene_mesh_, publish_scene_mesh_);
   node_handle_private_.param<bool>("publishers/publish_object_bbox",
-                                    publish_object_bbox_, publish_object_bbox_);
+                                   publish_object_bbox_, publish_object_bbox_);
 
   node_handle_private_.param<bool>(
       "use_label_propagation", use_label_propagation_, use_label_propagation_);
@@ -306,20 +305,141 @@ Controller::Controller(const ros::NodeHandle& node_handle_private)
   // If set, use a timer to progressively update the mesh.
   double update_mesh_every_n_sec = 0.0;
   node_handle_private_.param<double>("meshing/update_mesh_every_n_sec",
-                                      update_mesh_every_n_sec,
-                                      update_mesh_every_n_sec);
+                                     update_mesh_every_n_sec,
+                                     update_mesh_every_n_sec);
 
   if (update_mesh_every_n_sec > 0.0) {
-    update_mesh_timer_ = node_handle_private_.createTimer(
-        ros::Duration(update_mesh_every_n_sec), &Controller::updateMeshEvent,
-        this);
+    update_mesh_timer_ =
+        node_handle_private_.createTimer(ros::Duration(update_mesh_every_n_sec),
+                                         &Controller::updateMeshEvent, this);
   }
 
   node_handle_private_.param<std::string>("meshing/mesh_filename",
-                                           mesh_filename_, mesh_filename_);
+                                          mesh_filename_, mesh_filename_);
 }
 
-Controller::~Controller() { viz_thread_.join(); }
+Controller::Controller(
+    const ros::NodeHandle& node_handle_private, const LabelTsdfMap::Config& map_config,
+    const LabelTsdfIntegrator::Config& tsdf_integrator_config,
+    const LabelTsdfIntegrator::LabelTsdfConfig& label_tsdf_integrator_config,
+    TsdfMap::Ptr map)
+    : node_handle_private_(node_handle_private),
+      map_config_(map_config),
+      tsdf_integrator_config_(tsdf_integrator_config),
+      label_tsdf_integrator_config_(label_tsdf_integrator_config),
+      // Increased time limit for lookup in the past of tf messages
+      // to give some slack to the pipeline and not lose any messages.
+      integrated_frames_count_(0u),
+      tf_listener_(ros::Duration(500)),
+      world_frame_("world"),
+      integration_on_(true),
+      publish_scene_map_(false),
+      publish_scene_mesh_(false),
+      received_first_message_(false),
+      mesh_layer_updated_(false),
+      need_full_remesh_(false),
+      enable_semantic_instance_segmentation_(true),
+      publish_object_bbox_(false),
+      use_label_propagation_(true),
+      enable_tsdf_update_(false) {
+  bool verbose_log = false;
+  node_handle_private_.param<bool>("debug/verbose_log", verbose_log,
+                                   verbose_log);
+
+  if (verbose_log) {
+    FLAGS_stderrthreshold = 0;
+  }
+
+  node_handle_private_.param<std::string>("world_frame_id", world_frame_,
+                                          world_frame_);
+
+  map_.reset(new LabelTsdfMap(map_config_));
+  if (map != nullptr) {
+    map_->setTsdfLayer(map->getTsdfLayerPtr());
+    enable_tsdf_update_ = false;
+  }
+  integrator_.reset(new LabelTsdfIntegrator(tsdf_integrator_config_,
+                                            label_tsdf_integrator_config_,
+                                            map_.get(), enable_tsdf_update_));
+
+  // Visualization settings.
+  bool visualize = false;
+  node_handle_private_.param<bool>("meshing/visualize", visualize, visualize);
+
+  bool save_visualizer_frames = false;
+  node_handle_private_.param<bool>("debug/save_visualizer_frames",
+                                   save_visualizer_frames,
+                                   save_visualizer_frames);
+
+  bool multiple_visualizers = false;
+  node_handle_private_.param<bool>("debug/multiple_visualizers",
+                                   multiple_visualizers_,
+                                   multiple_visualizers_);
+
+  mesh_merged_layer_.reset(new MeshLayer(map_->block_size()));
+
+  if (multiple_visualizers_) {
+    mesh_label_layer_.reset(new MeshLayer(map_->block_size()));
+    mesh_semantic_layer_.reset(new MeshLayer(map_->block_size()));
+    mesh_instance_layer_.reset(new MeshLayer(map_->block_size()));
+  }
+
+  resetMeshIntegrators();
+
+  std::vector<double> camera_position;
+  std::vector<double> clip_distances;
+  node_handle_private_.param<std::vector<double>>(
+      "meshing/visualizer_parameters/camera_position", camera_position,
+      camera_position);
+  node_handle_private_.param<std::vector<double>>(
+      "meshing/visualizer_parameters/clip_distances", clip_distances,
+      clip_distances);
+  if (visualize) {
+    std::vector<std::shared_ptr<MeshLayer>> mesh_layers;
+
+    mesh_layers.push_back(mesh_merged_layer_);
+
+    if (multiple_visualizers_) {
+      mesh_layers.push_back(mesh_label_layer_);
+      mesh_layers.push_back(mesh_instance_layer_);
+      mesh_layers.push_back(mesh_semantic_layer_);
+    }
+
+    visualizer_ =
+        new Visualizer(mesh_layers, &mesh_layer_updated_, &mesh_layer_mutex_,
+                       camera_position, clip_distances, save_visualizer_frames);
+    viz_thread_ = std::thread(&Visualizer::visualizeMesh, visualizer_);
+  }
+
+  node_handle_private_.param<bool>("publishers/publish_scene_map",
+                                   publish_scene_map_, publish_scene_map_);
+  node_handle_private_.param<bool>("publishers/publish_scene_mesh",
+                                   publish_scene_mesh_, publish_scene_mesh_);
+  node_handle_private_.param<bool>("publishers/publish_object_bbox",
+                                   publish_object_bbox_, publish_object_bbox_);
+
+  node_handle_private_.param<bool>(
+      "use_label_propagation", use_label_propagation_, use_label_propagation_);
+
+  // If set, use a timer to progressively update the mesh.
+  double update_mesh_every_n_sec = 0.0;
+  node_handle_private_.param<double>("meshing/update_mesh_every_n_sec",
+                                     update_mesh_every_n_sec,
+                                     update_mesh_every_n_sec);
+
+  if (update_mesh_every_n_sec > 0.0) {
+    update_mesh_timer_ =
+        node_handle_private_.createTimer(ros::Duration(update_mesh_every_n_sec),
+                                         &Controller::updateMeshEvent, this);
+  }
+
+  node_handle_private_.param<std::string>("meshing/mesh_filename",
+                                          mesh_filename_, mesh_filename_);
+}
+
+Controller::~Controller() {
+  viz_thread_.join();
+}
 
 void Controller::subscribeSegmentPointCloudTopic(
     ros::Subscriber* segment_point_cloud_sub) {
@@ -327,8 +447,8 @@ void Controller::subscribeSegmentPointCloudTopic(
   std::string segment_point_cloud_topic =
       "/depth_segmentation_node/object_segment";
   node_handle_private_.param<std::string>("segment_point_cloud_topic",
-                                           segment_point_cloud_topic,
-                                           segment_point_cloud_topic);
+                                          segment_point_cloud_topic,
+                                          segment_point_cloud_topic);
   // TODO (margaritaG): make this a param once segments of a frame are
   // refactored to be received as one single message.
   // Large queue size to give slack to the
@@ -342,7 +462,7 @@ void Controller::subscribeSegmentPointCloudTopic(
 void Controller::advertiseMapTopic() {
   map_cloud_pub_ = new ros::Publisher(
       node_handle_private_.advertise<pcl::PointCloud<PointMapType>>("map", 1,
-                                                                     true));
+                                                                    true));
 }
 
 void Controller::advertiseSceneMeshTopic() {
@@ -359,7 +479,7 @@ void Controller::advertiseSceneCloudTopic() {
 void Controller::advertiseBboxTopic() {
   bbox_pub_ = new ros::Publisher(
       node_handle_private_.advertise<visualization_msgs::Marker>("bbox", 1,
-                                                                  true));
+                                                                 true));
 }
 
 void Controller::advertiseResetMapService(ros::ServiceServer* reset_map_srv) {

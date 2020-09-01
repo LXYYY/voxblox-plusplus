@@ -59,11 +59,12 @@ class LabelTsdfIntegrator : public MergedTsdfIntegrator {
     // ICP params.
     bool enable_icp = false;
     bool keep_track_of_icp_correction = false;
+    bool enable_tsdf_update = false;
   };
 
   LabelTsdfIntegrator(const Config& tsdf_config,
                       const LabelTsdfConfig& label_tsdf_config,
-                      LabelTsdfMap* map);
+                      LabelTsdfMap* map, bool enable_tsdf_update=true);
 
   // Label propagation.
   void computeSegmentLabelCandidates(

@@ -4,7 +4,7 @@ namespace voxblox {
 
 LabelTsdfIntegrator::LabelTsdfIntegrator(
     const Config& tsdf_config, const LabelTsdfConfig& label_tsdf_config,
-    LabelTsdfMap* map)
+    LabelTsdfMap* map, bool enable_tsdf_update)
     : MergedTsdfIntegrator(tsdf_config, CHECK_NOTNULL(map->getTsdfLayerPtr())),
       label_tsdf_config_(label_tsdf_config),
       label_layer_(CHECK_NOTNULL(map->getLabelLayerPtr())),
@@ -12,7 +12,11 @@ LabelTsdfIntegrator::LabelTsdfIntegrator(
       highest_label_ptr_(CHECK_NOTNULL(map->getHighestLabelPtr())),
       highest_instance_ptr_(CHECK_NOTNULL(map->getHighestInstancePtr())),
       semantic_instance_label_fusion_ptr_(
-          map->getSemanticInstanceLabelFusionPtr()) {}
+          map->getSemanticInstanceLabelFusionPtr()) {
+  label_tsdf_config_.enable_tsdf_update = enable_tsdf_update;
+  LOG(INFO) << "Label Tsdf Integrator update tsdf map: "
+            << (label_tsdf_config_.enable_tsdf_update ? "enabled" : "disabled");
+}
 
 void LabelTsdfIntegrator::checkForSegmentLabelMergeCandidate(
     const Label& label, const int label_points_count,
@@ -599,8 +603,10 @@ void LabelTsdfIntegrator::integrateVoxel(
     TsdfVoxel* tsdf_voxel = allocateStorageAndGetVoxelPtr(
         global_voxel_idx, &tsdf_block, &block_idx);
 
-    updateTsdfVoxel(origin, merged_point_G, global_voxel_idx, merged_color,
-                    merged_weight, tsdf_voxel, false);
+    // add a param to decide if update tsdf or not
+    if (label_tsdf_config_.enable_tsdf_update)
+      updateTsdfVoxel(origin, merged_point_G, global_voxel_idx, merged_color,
+                      merged_weight, tsdf_voxel, false);
 
     // TODO(margaritaG): parametrize.
     // If voxel carving is enabled, then only allocate the label voxels
