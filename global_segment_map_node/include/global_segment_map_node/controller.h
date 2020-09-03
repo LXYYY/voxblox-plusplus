@@ -39,6 +39,8 @@ class Controller {
       const LabelTsdfMap::Config& map_config,
       const LabelTsdfIntegrator::Config& tsdf_integrator_config,
       const LabelTsdfIntegrator::LabelTsdfConfig& label_tsdf_integrator_config,
+      const MeshIntegratorConfig& mesh_config,
+      const MeshLabelIntegrator::LabelTsdfConfig& label_tsdf_mesh_config,
       TsdfMap::Ptr map = nullptr);
 
   virtual ~Controller();
@@ -133,6 +135,8 @@ class Controller {
 
   void updateMeshEvent(const ros::TimerEvent& e);
 
+  void initVisualization();
+
   // NOT thread safe.
   void resetMeshIntegrators();
 
@@ -166,6 +170,7 @@ class Controller {
   std::shared_ptr<LabelTsdfMap> map_;
   std::shared_ptr<LabelTsdfIntegrator> integrator_;
 
+  bool only_mesh_label_updated_blocks_;
   MeshIntegratorConfig mesh_config_;
   MeshLabelIntegrator::LabelTsdfConfig label_tsdf_mesh_config_;
   ros::Timer update_mesh_timer_;

@@ -451,6 +451,8 @@ LabelVoxel* LabelTsdfIntegrator::allocateStorageAndGetLabelVoxelPtr(
     }
   }
 
+  (*last_block)->updated().set();
+
   const VoxelIndex local_voxel_idx =
       getLocalFromGlobalVoxelIndex(global_voxel_idx, voxels_per_side_);
 
@@ -470,7 +472,8 @@ void LabelTsdfIntegrator::updateLabelLayerWithStoredBlocks() {
 }
 
 // Updates label_voxel. Thread safe.
-void LabelTsdfIntegrator::updateLabelVoxel(const Point& point_G,
+// If return true, label is changed. if false, not changed.
+bool LabelTsdfIntegrator::updateLabelVoxel(const Point& point_G,
                                            const Label& label,
                                            LabelVoxel* label_voxel,
                                            const LabelConfidence& confidence) {
@@ -507,7 +510,10 @@ void LabelTsdfIntegrator::updateLabelVoxel(const Point& point_G,
     if (*highest_label_ptr_ < new_label) {
       *highest_label_ptr_ = new_label;
     }
+
+    return true;
   }
+  return false;
 }
 
 void LabelTsdfIntegrator::integratePointCloud(const Transformation& T_G_C,
@@ -619,6 +625,8 @@ void LabelTsdfIntegrator::integrateVoxel(
           global_voxel_idx, &label_block, &block_idx);
       updateLabelVoxel(merged_point_G, merged_label, label_voxel,
                        merged_label_confidence);
+      label_block->updated().set(voxblox::Update::kLabel);
+      label_block->updated().set(voxblox::Update::kMeshLabel);
     }
   }
 }
@@ -748,6 +756,9 @@ void LabelTsdfIntegrator::swapLabels(const Label& old_label,
         changeLabelCount(previous_label, -1);
         if (!tsdf_block->updated()[voxblox::Update::kLabel]) {
           label_block->updated().set(voxblox::Update::kLabel);
+        }
+        if (!tsdf_block->updated()[voxblox::Update::kMeshLabel]) {
+          label_block->updated().set(voxblox::Update::kMeshLabel);
         }
       }
     }

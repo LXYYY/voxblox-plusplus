@@ -6,7 +6,8 @@ namespace voxblox {
 MeshLabelIntegrator::MeshLabelIntegrator(
     const MeshIntegratorConfig& config,
     const MeshLabelIntegrator::LabelTsdfConfig& label_tsdf_config,
-    LabelTsdfMap* map, MeshLayer* mesh_layer, bool* remesh)
+    LabelTsdfMap* map, MeshLayer* mesh_layer, bool* remesh,
+    bool only_mesh_label_updated_blocks)
     : MeshIntegrator(config, CHECK_NOTNULL(map)->getTsdfLayerPtr(), mesh_layer),
       label_tsdf_config_(label_tsdf_config),
       label_layer_mutable_ptr_(CHECK_NOTNULL(map->getLabelLayerPtr())),
@@ -17,7 +18,8 @@ MeshLabelIntegrator::MeshLabelIntegrator(
       instance_color_map_(),
       semantic_color_map_(
           SemanticColorMap::create(label_tsdf_config.class_task)),
-      remesh_ptr_(remesh) {
+      remesh_ptr_(remesh),
+      only_mesh_label_updated_blocks_(only_mesh_label_updated_blocks) {
   if (remesh_ptr_ == nullptr) {
     remesh_ptr_ = &remesh_;
   }
@@ -26,7 +28,8 @@ MeshLabelIntegrator::MeshLabelIntegrator(
 MeshLabelIntegrator::MeshLabelIntegrator(
     const MeshIntegratorConfig& config,
     const MeshLabelIntegrator::LabelTsdfConfig& label_tsdf_config,
-    const LabelTsdfMap& map, MeshLayer* mesh_layer, bool* remesh)
+    const LabelTsdfMap& map, MeshLayer* mesh_layer, bool* remesh,
+    bool only_mesh_label_updated_blocks)
     : MeshIntegrator(config, map.getTsdfLayer(), mesh_layer),
       label_tsdf_config_(label_tsdf_config),
       label_layer_mutable_ptr_(nullptr),
@@ -37,7 +40,8 @@ MeshLabelIntegrator::MeshLabelIntegrator(
       instance_color_map_(),
       semantic_color_map_(
           SemanticColorMap::create(label_tsdf_config.class_task)),
-      remesh_ptr_(remesh) {
+      remesh_ptr_(remesh),
+      only_mesh_label_updated_blocks_(only_mesh_label_updated_blocks) {
   if (remesh_ptr_ == nullptr) {
     remesh_ptr_ = &remesh_;
   }
@@ -47,7 +51,7 @@ MeshLabelIntegrator::MeshLabelIntegrator(
     const MeshIntegratorConfig& config,
     const MeshLabelIntegrator::LabelTsdfConfig& label_tsdf_config,
     const Layer<TsdfVoxel>& tsdf_layer, const Layer<LabelVoxel>& label_layer,
-    MeshLayer* mesh_layer)
+    MeshLayer* mesh_layer, bool only_mesh_label_updated_blocks)
     : MeshIntegrator(config, tsdf_layer, mesh_layer),
       label_tsdf_config_(label_tsdf_config),
       label_layer_mutable_ptr_(nullptr),
@@ -56,7 +60,8 @@ MeshLabelIntegrator::MeshLabelIntegrator(
       label_color_map_(),
       instance_color_map_(),
       semantic_color_map_(
-          SemanticColorMap::create(label_tsdf_config.class_task)) {}
+          SemanticColorMap::create(label_tsdf_config.class_task)),
+      only_mesh_label_updated_blocks_(only_mesh_label_updated_blocks) {}
 
 bool MeshLabelIntegrator::generateMesh(bool only_mesh_updated_blocks,
                                        bool clear_updated_flag) {
@@ -70,11 +75,20 @@ bool MeshLabelIntegrator::generateMesh(bool only_mesh_updated_blocks,
 
   if (only_mesh_updated_blocks) {
     BlockIndexList all_label_blocks;
-    sdf_layer_const_->getAllUpdatedBlocks(voxblox::Update::kMesh,
+    sdf_layer_const_->getAllUpdatedBlocks(only_mesh_label_updated_blocks_
+                                              ? voxblox::Update::kMeshLabel
+                                              : voxblox::Update::kMesh,
                                           &all_tsdf_blocks);
-    label_layer_mutable_ptr_->getAllUpdatedBlocks(voxblox::Update::kMesh,
-                                                  &all_label_blocks);
-    if (all_tsdf_blocks.size() == 0u && all_label_blocks.size() == 0u) {
+
+    label_layer_mutable_ptr_->getAllUpdatedBlocks(
+        only_mesh_label_updated_blocks_ ? voxblox::Update::kMeshLabel
+                                        : voxblox::Update::kMesh,
+        &all_label_blocks);
+
+    // return if tsdf || label blocks are empty, instead of &&, because tsdf
+    // and label blocks not necessarily have same size, since they can be now
+    // integrated by different integrator.
+    if (all_tsdf_blocks.size() == 0u || all_label_blocks.size() == 0u) {
       return false;
     }
 
@@ -119,6 +133,8 @@ void MeshLabelIntegrator::generateMeshBlocksFunction(
   size_t list_idx;
   while (index_getter->getNextIndex(&list_idx)) {
     const BlockIndex& block_idx = all_tsdf_blocks[list_idx];
+    if (!checkTsdfAndLabelBlocksCorrespondence(block_idx))
+      continue;
     updateMeshForBlock(block_idx);
     if (clear_updated_flag) {
       typename Block<TsdfVoxel>::Ptr tsdf_block =
@@ -126,10 +142,27 @@ void MeshLabelIntegrator::generateMeshBlocksFunction(
       typename Block<LabelVoxel>::Ptr label_block =
           label_layer_mutable_ptr_->getBlockPtrByIndex(block_idx);
 
-      tsdf_block->updated() = false;
-      label_block->updated() = false;
+      if (only_mesh_label_updated_blocks_) {
+        tsdf_block->updated().reset(voxblox::Update::kMeshLabel);
+        label_block->updated().reset(voxblox::Update::kMeshLabel);
+      } else {
+        tsdf_block->updated() = false;
+        label_block->updated() = false;
+      }
     }
   }
+}
+
+bool MeshLabelIntegrator::checkTsdfAndLabelBlocksCorrespondence(
+    const BlockIndex& block_idx) {
+  Block<TsdfVoxel>::ConstPtr tsdf_block =
+      sdf_layer_const_->getBlockPtrByIndex(block_idx);
+  Block<LabelVoxel>::ConstPtr label_block =
+      label_layer_const_ptr_->getBlockPtrByIndex(block_idx);
+
+  if (tsdf_block != nullptr && label_block != nullptr)
+    return true;
+  return false;
 }
 
 // TODO(margaritaG): handle this remeshing!!
@@ -167,11 +200,18 @@ void MeshLabelIntegrator::updateMeshForBlock(const BlockIndex& block_index) {
   Block<LabelVoxel>::ConstPtr label_block =
       label_layer_const_ptr_->getBlockPtrByIndex(block_index);
 
+  // use || for tsdf and label block now not necessarily match
+  if (!tsdf_block || !label_block) {
+    DLOG(INFO) << "one of tsdf or label is missing, dropping this block ";
+    return;
+  }
+
   if (!tsdf_block && !label_block) {
     LOG(ERROR) << "Trying to mesh a non-existent block at index: "
                << block_index.transpose();
     return;
   }
+
   // TODO(margaritaG): this is actually possible because with voxel carving we
   // do not allocate labels along the ray, just nearby surfaces.
   // } else if (!(tsdf_block && label_block)) {

@@ -47,24 +47,27 @@ class MeshLabelIntegrator : public MeshIntegrator<TsdfVoxel> {
   MeshLabelIntegrator(
       const MeshIntegratorConfig& config,
       const MeshLabelIntegrator::LabelTsdfConfig& label_tsdf_config,
-      LabelTsdfMap* map, MeshLayer* mesh_layer, bool* remesh = nullptr);
+      LabelTsdfMap* map, MeshLayer* mesh_layer, bool* remesh = nullptr,
+      bool only_mesh_label_updated_blocks = false);
 
   MeshLabelIntegrator(
       const MeshIntegratorConfig& config,
       const MeshLabelIntegrator::LabelTsdfConfig& label_tsdf_config,
-      const LabelTsdfMap& map, MeshLayer* mesh_layer, bool* remesh = nullptr);
+      const LabelTsdfMap& map, MeshLayer* mesh_layer, bool* remesh = nullptr,
+      bool only_mesh_label_updated_blocks = false);
 
   MeshLabelIntegrator(
       const MeshIntegratorConfig& config,
       const MeshLabelIntegrator::LabelTsdfConfig& label_tsdf_config,
       const Layer<TsdfVoxel>& tsdf_layer, const Layer<LabelVoxel>& label_layer,
-      MeshLayer* mesh_layer);
+      MeshLayer* mesh_layer, bool only_mesh_label_updated_blocks = false);
 
   // Generates mesh for the tsdf layer.
   bool generateMesh(const bool only_mesh_updated_blocks,
                     const bool clear_updated_flag);
 
  protected:
+  bool checkTsdfAndLabelBlocksCorrespondence(const BlockIndex& block_idx);
   void generateMeshBlocksFunction(const BlockIndexList& all_tsdf_blocks,
                                   const bool clear_updated_flag,
                                   ThreadSafeIndex* index_getter);
@@ -96,6 +99,7 @@ class MeshLabelIntegrator : public MeshIntegrator<TsdfVoxel> {
   // This parameter is used if no valid remesh_ptr is provided to the class at
   // construction time.
   bool remesh_ = false;
+  bool only_mesh_label_updated_blocks_;
   std::map<Label, InstanceLabel> label_instance_map_;
   std::shared_timed_mutex label_instance_map_mutex_;
 

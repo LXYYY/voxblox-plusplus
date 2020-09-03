@@ -135,7 +135,9 @@ Controller::Controller(const ros::NodeHandle& node_handle_private)
       need_full_remesh_(false),
       enable_semantic_instance_segmentation_(true),
       publish_object_bbox_(false),
-      use_label_propagation_(true) {
+      use_label_propagation_(true),
+      enable_tsdf_update_(true),
+      only_mesh_label_updated_blocks_(false) {
   bool verbose_log = false;
   node_handle_private_.param<bool>("debug/verbose_log", verbose_log,
                                    verbose_log);
@@ -243,90 +245,54 @@ Controller::Controller(const ros::NodeHandle& node_handle_private)
   integrator_.reset(new LabelTsdfIntegrator(
       tsdf_integrator_config_, label_tsdf_integrator_config_, map_.get()));
 
-  // Visualization settings.
-  bool visualize = false;
-  node_handle_private_.param<bool>("meshing/visualize", visualize, visualize);
-
-  bool save_visualizer_frames = false;
-  node_handle_private_.param<bool>("debug/save_visualizer_frames",
-                                   save_visualizer_frames,
-                                   save_visualizer_frames);
-
-  bool multiple_visualizers = false;
-  node_handle_private_.param<bool>("debug/multiple_visualizers",
-                                   multiple_visualizers_,
-                                   multiple_visualizers_);
-
-  mesh_merged_layer_.reset(new MeshLayer(map_->block_size()));
-
-  if (multiple_visualizers_) {
-    mesh_label_layer_.reset(new MeshLayer(map_->block_size()));
-    mesh_semantic_layer_.reset(new MeshLayer(map_->block_size()));
-    mesh_instance_layer_.reset(new MeshLayer(map_->block_size()));
-  }
-
-  resetMeshIntegrators();
-
-  std::vector<double> camera_position;
-  std::vector<double> clip_distances;
-  node_handle_private_.param<std::vector<double>>(
-      "meshing/visualizer_parameters/camera_position", camera_position,
-      camera_position);
-  node_handle_private_.param<std::vector<double>>(
-      "meshing/visualizer_parameters/clip_distances", clip_distances,
-      clip_distances);
-  if (visualize) {
-    std::vector<std::shared_ptr<MeshLayer>> mesh_layers;
-
-    mesh_layers.push_back(mesh_merged_layer_);
-
-    if (multiple_visualizers_) {
-      mesh_layers.push_back(mesh_label_layer_);
-      mesh_layers.push_back(mesh_instance_layer_);
-      mesh_layers.push_back(mesh_semantic_layer_);
-    }
-
-    visualizer_ =
-        new Visualizer(mesh_layers, &mesh_layer_updated_, &mesh_layer_mutex_,
-                       camera_position, clip_distances, save_visualizer_frames);
-    viz_thread_ = std::thread(&Visualizer::visualizeMesh, visualizer_);
-  }
-
-  node_handle_private_.param<bool>("publishers/publish_scene_map",
-                                   publish_scene_map_, publish_scene_map_);
-  node_handle_private_.param<bool>("publishers/publish_scene_mesh",
-                                   publish_scene_mesh_, publish_scene_mesh_);
-  node_handle_private_.param<bool>("publishers/publish_object_bbox",
-                                   publish_object_bbox_, publish_object_bbox_);
-
   node_handle_private_.param<bool>(
       "use_label_propagation", use_label_propagation_, use_label_propagation_);
 
-  // If set, use a timer to progressively update the mesh.
-  double update_mesh_every_n_sec = 0.0;
-  node_handle_private_.param<double>("meshing/update_mesh_every_n_sec",
-                                     update_mesh_every_n_sec,
-                                     update_mesh_every_n_sec);
-
-  if (update_mesh_every_n_sec > 0.0) {
-    update_mesh_timer_ =
-        node_handle_private_.createTimer(ros::Duration(update_mesh_every_n_sec),
-                                         &Controller::updateMeshEvent, this);
+  label_tsdf_mesh_config_.color_scheme =
+      MeshLabelIntegrator::ColorScheme::kMerged;
+  std::string color_scheme_string = "merged";
+  node_handle_private_.param<std::string>("color_scheme", color_scheme_string,
+                                          color_scheme_string);
+  if (color_scheme_string.empty()) {
+    label_tsdf_mesh_config_.color_scheme = MeshLabelIntegrator::kMerged;
+  } else {
+    if (color_scheme_string == "color" || color_scheme_string == "colors") {
+      label_tsdf_mesh_config_.color_scheme = MeshLabelIntegrator::kColor;
+    } else if (color_scheme_string == "normals") {
+      label_tsdf_mesh_config_.color_scheme = MeshLabelIntegrator::kNormals;
+    } else if (color_scheme_string == "label") {
+      label_tsdf_mesh_config_.color_scheme = MeshLabelIntegrator::kLabel;
+    } else if (color_scheme_string == "label_confidence") {
+      label_tsdf_mesh_config_.color_scheme =
+          MeshLabelIntegrator::kLabelConfidence;
+    } else if (color_scheme_string == "semantic") {
+      label_tsdf_mesh_config_.color_scheme = MeshLabelIntegrator::kSemantic;
+    } else if (color_scheme_string == "instance") {
+      label_tsdf_mesh_config_.color_scheme = MeshLabelIntegrator::kInstance;
+    } else if (color_scheme_string == "merged") {
+      label_tsdf_mesh_config_.color_scheme = MeshLabelIntegrator::kMerged;
+    } else {  // Default case is gray.
+      label_tsdf_mesh_config_.color_scheme = MeshLabelIntegrator::kMerged;
+    }
   }
 
-  node_handle_private_.param<std::string>("meshing/mesh_filename",
-                                          mesh_filename_, mesh_filename_);
+  initVisualization();
 }
 
 Controller::Controller(
-    const ros::NodeHandle& node_handle_private, const LabelTsdfMap::Config& map_config,
+    const ros::NodeHandle& node_handle_private,
+    const LabelTsdfMap::Config& map_config,
     const LabelTsdfIntegrator::Config& tsdf_integrator_config,
     const LabelTsdfIntegrator::LabelTsdfConfig& label_tsdf_integrator_config,
+    const MeshIntegratorConfig& mesh_config,
+    const MeshLabelIntegrator::LabelTsdfConfig& label_tsdf_mesh_config,
     TsdfMap::Ptr map)
     : node_handle_private_(node_handle_private),
       map_config_(map_config),
       tsdf_integrator_config_(tsdf_integrator_config),
       label_tsdf_integrator_config_(label_tsdf_integrator_config),
+      mesh_config_(mesh_config),
+      label_tsdf_mesh_config_(label_tsdf_mesh_config),
       // Increased time limit for lookup in the past of tf messages
       // to give some slack to the pipeline and not lose any messages.
       integrated_frames_count_(0u),
@@ -341,7 +307,8 @@ Controller::Controller(
       enable_semantic_instance_segmentation_(true),
       publish_object_bbox_(false),
       use_label_propagation_(true),
-      enable_tsdf_update_(false) {
+      enable_tsdf_update_(true),
+      only_mesh_label_updated_blocks_(!enable_tsdf_update_) {
   bool verbose_log = false;
   node_handle_private_.param<bool>("debug/verbose_log", verbose_log,
                                    verbose_log);
@@ -357,84 +324,16 @@ Controller::Controller(
   if (map != nullptr) {
     map_->setTsdfLayer(map->getTsdfLayerPtr());
     enable_tsdf_update_ = false;
+    only_mesh_label_updated_blocks_ = !enable_tsdf_update_;
   }
   integrator_.reset(new LabelTsdfIntegrator(tsdf_integrator_config_,
                                             label_tsdf_integrator_config_,
                                             map_.get(), enable_tsdf_update_));
 
-  // Visualization settings.
-  bool visualize = false;
-  node_handle_private_.param<bool>("meshing/visualize", visualize, visualize);
-
-  bool save_visualizer_frames = false;
-  node_handle_private_.param<bool>("debug/save_visualizer_frames",
-                                   save_visualizer_frames,
-                                   save_visualizer_frames);
-
-  bool multiple_visualizers = false;
-  node_handle_private_.param<bool>("debug/multiple_visualizers",
-                                   multiple_visualizers_,
-                                   multiple_visualizers_);
-
-  mesh_merged_layer_.reset(new MeshLayer(map_->block_size()));
-
-  if (multiple_visualizers_) {
-    mesh_label_layer_.reset(new MeshLayer(map_->block_size()));
-    mesh_semantic_layer_.reset(new MeshLayer(map_->block_size()));
-    mesh_instance_layer_.reset(new MeshLayer(map_->block_size()));
-  }
-
-  resetMeshIntegrators();
-
-  std::vector<double> camera_position;
-  std::vector<double> clip_distances;
-  node_handle_private_.param<std::vector<double>>(
-      "meshing/visualizer_parameters/camera_position", camera_position,
-      camera_position);
-  node_handle_private_.param<std::vector<double>>(
-      "meshing/visualizer_parameters/clip_distances", clip_distances,
-      clip_distances);
-  if (visualize) {
-    std::vector<std::shared_ptr<MeshLayer>> mesh_layers;
-
-    mesh_layers.push_back(mesh_merged_layer_);
-
-    if (multiple_visualizers_) {
-      mesh_layers.push_back(mesh_label_layer_);
-      mesh_layers.push_back(mesh_instance_layer_);
-      mesh_layers.push_back(mesh_semantic_layer_);
-    }
-
-    visualizer_ =
-        new Visualizer(mesh_layers, &mesh_layer_updated_, &mesh_layer_mutex_,
-                       camera_position, clip_distances, save_visualizer_frames);
-    viz_thread_ = std::thread(&Visualizer::visualizeMesh, visualizer_);
-  }
-
-  node_handle_private_.param<bool>("publishers/publish_scene_map",
-                                   publish_scene_map_, publish_scene_map_);
-  node_handle_private_.param<bool>("publishers/publish_scene_mesh",
-                                   publish_scene_mesh_, publish_scene_mesh_);
-  node_handle_private_.param<bool>("publishers/publish_object_bbox",
-                                   publish_object_bbox_, publish_object_bbox_);
-
   node_handle_private_.param<bool>(
       "use_label_propagation", use_label_propagation_, use_label_propagation_);
 
-  // If set, use a timer to progressively update the mesh.
-  double update_mesh_every_n_sec = 0.0;
-  node_handle_private_.param<double>("meshing/update_mesh_every_n_sec",
-                                     update_mesh_every_n_sec,
-                                     update_mesh_every_n_sec);
-
-  if (update_mesh_every_n_sec > 0.0) {
-    update_mesh_timer_ =
-        node_handle_private_.createTimer(ros::Duration(update_mesh_every_n_sec),
-                                         &Controller::updateMeshEvent, this);
-  }
-
-  node_handle_private_.param<std::string>("meshing/mesh_filename",
-                                          mesh_filename_, mesh_filename_);
+  initVisualization();
 }
 
 Controller::~Controller() {
@@ -461,19 +360,20 @@ void Controller::subscribeSegmentPointCloudTopic(
 
 void Controller::advertiseMapTopic() {
   map_cloud_pub_ = new ros::Publisher(
-      node_handle_private_.advertise<pcl::PointCloud<PointMapType>>("map", 1,
-                                                                    true));
+      node_handle_private_.advertise<pcl::PointCloud<PointMapType>>(
+          "segment/map", 1, true));
 }
 
 void Controller::advertiseSceneMeshTopic() {
-  scene_mesh_pub_ = new ros::Publisher(
-      node_handle_private_.advertise<voxblox_msgs::Mesh>("mesh", 1, true));
+  scene_mesh_pub_ =
+      new ros::Publisher(node_handle_private_.advertise<voxblox_msgs::Mesh>(
+          "segment/mesh", 1, true));
 }
 
 void Controller::advertiseSceneCloudTopic() {
   scene_cloud_pub_ = new ros::Publisher(
       node_handle_private_.advertise<pcl::PointCloud<pcl::PointXYZRGB>>(
-          "cloud", 1, true));
+          "segment/cloud", 1, true));
 }
 
 void Controller::advertiseBboxTopic() {
@@ -563,7 +463,7 @@ void Controller::processSegment(
     timing::Timer ptcloud_timer("ptcloud_preprocess");
 
     Segment* segment = nullptr;
-    if (enable_semantic_instance_segmentation_) {
+    if (label_tsdf_integrator_config_.enable_semantic_instance_segmentation) {
       pcl::PointCloud<voxblox::PointSemanticInstanceType>
           point_cloud_semantic_instance;
       pcl::fromROSMsg(*segment_point_cloud_msg, point_cloud_semantic_instance);
@@ -706,30 +606,107 @@ void Controller::segmentPointCloudCallback(
   processSegment(segment_point_cloud_msg);
 }
 
-void Controller::resetMeshIntegrators() {
-  label_tsdf_mesh_config_.color_scheme =
-      MeshLabelIntegrator::ColorScheme::kMerged;
+void Controller::initVisualization() {
+  // TODO(mikexyl) need more detailed init process
+  // Visualization settings.
+  bool visualize = false;
+  node_handle_private_.param<bool>("meshing/visualize", visualize, visualize);
 
+  bool save_visualizer_frames = false;
+  node_handle_private_.param<bool>("debug/save_visualizer_frames",
+                                   save_visualizer_frames,
+                                   save_visualizer_frames);
+
+  bool multiple_visualizers = false;
+  node_handle_private_.param<bool>("debug/multiple_visualizers",
+                                   multiple_visualizers_,
+                                   multiple_visualizers_);
+
+  mesh_merged_layer_.reset(new MeshLayer(map_->block_size()));
+
+  if (multiple_visualizers_) {
+    mesh_label_layer_.reset(new MeshLayer(map_->block_size()));
+    mesh_semantic_layer_.reset(new MeshLayer(map_->block_size()));
+    mesh_instance_layer_.reset(new MeshLayer(map_->block_size()));
+  }
+
+  resetMeshIntegrators();
+
+  std::vector<double> camera_position;
+  std::vector<double> clip_distances;
+  node_handle_private_.param<std::vector<double>>(
+      "meshing/visualizer_parameters/camera_position", camera_position,
+      camera_position);
+  node_handle_private_.param<std::vector<double>>(
+      "meshing/visualizer_parameters/clip_distances", clip_distances,
+      clip_distances);
+  node_handle_private_.param<bool>("publishers/publish_scene_map",
+                                   publish_scene_map_, publish_scene_map_);
+  node_handle_private_.param<bool>("publishers/publish_scene_mesh",
+                                   publish_scene_mesh_, publish_scene_mesh_);
+  node_handle_private_.param<bool>("publishers/publish_object_bbox",
+                                   publish_object_bbox_, publish_object_bbox_);
+
+  // If set, use a timer to progressively update the mesh.
+  double update_mesh_every_n_sec = 0.0;
+  node_handle_private_.param<double>("meshing/update_mesh_every_n_sec",
+                                     update_mesh_every_n_sec,
+                                     update_mesh_every_n_sec);
+
+  if (visualize) {
+    std::vector<std::shared_ptr<MeshLayer>> mesh_layers;
+
+    mesh_layers.push_back(mesh_merged_layer_);
+
+    if (multiple_visualizers_) {
+      mesh_layers.push_back(mesh_label_layer_);
+      mesh_layers.push_back(mesh_instance_layer_);
+      mesh_layers.push_back(mesh_semantic_layer_);
+    }
+
+    visualizer_ =
+        new Visualizer(mesh_layers, &mesh_layer_updated_, &mesh_layer_mutex_,
+                       camera_position, clip_distances, save_visualizer_frames);
+    viz_thread_ = std::thread(&Visualizer::visualizeMesh, visualizer_);
+  }
+
+  if ((visualize || publish_scene_mesh_) && update_mesh_every_n_sec > 0.0) {
+    update_mesh_timer_ =
+        node_handle_private_.createTimer(ros::Duration(update_mesh_every_n_sec),
+                                         &Controller::updateMeshEvent, this);
+  }
+
+  node_handle_private_.param<std::string>("meshing/mesh_filename",
+                                          mesh_filename_, mesh_filename_);
+}
+
+void Controller::resetMeshIntegrators() {
+  // TODO(mikexyl) make a string vector of color scheme
+  LOG(INFO) << "Using color scheme: " << label_tsdf_mesh_config_.color_scheme;
   mesh_merged_integrator_.reset(
       new MeshLabelIntegrator(mesh_config_, label_tsdf_mesh_config_, map_.get(),
-                              mesh_merged_layer_.get(), &need_full_remesh_));
+                              mesh_merged_layer_.get(), &need_full_remesh_,
+                              only_mesh_label_updated_blocks_));
 
   if (multiple_visualizers_) {
     label_tsdf_mesh_config_.color_scheme =
         MeshLabelIntegrator::ColorScheme::kLabel;
     mesh_label_integrator_.reset(new MeshLabelIntegrator(
         mesh_config_, label_tsdf_mesh_config_, map_.get(),
-        mesh_label_layer_.get(), &need_full_remesh_));
+        mesh_label_layer_.get(), &need_full_remesh_,
+        only_mesh_label_updated_blocks_));
     label_tsdf_mesh_config_.color_scheme =
         MeshLabelIntegrator::ColorScheme::kSemantic;
     mesh_semantic_integrator_.reset(new MeshLabelIntegrator(
         mesh_config_, label_tsdf_mesh_config_, map_.get(),
-        mesh_semantic_layer_.get(), &need_full_remesh_));
+        mesh_semantic_layer_.get(), &need_full_remesh_,
+        only_mesh_label_updated_blocks_));
     label_tsdf_mesh_config_.color_scheme =
         MeshLabelIntegrator::ColorScheme::kInstance;
     mesh_instance_integrator_.reset(new MeshLabelIntegrator(
         mesh_config_, label_tsdf_mesh_config_, map_.get(),
-        mesh_instance_layer_.get(), &need_full_remesh_));
+        mesh_instance_layer_.get(), &need_full_remesh_,
+        only_mesh_label_updated_blocks_));
   }
 }
 

@@ -59,12 +59,12 @@ class LabelTsdfIntegrator : public MergedTsdfIntegrator {
     // ICP params.
     bool enable_icp = false;
     bool keep_track_of_icp_correction = false;
-    bool enable_tsdf_update = false;
+    bool enable_tsdf_update = true;
   };
 
   LabelTsdfIntegrator(const Config& tsdf_config,
                       const LabelTsdfConfig& label_tsdf_config,
-                      LabelTsdfMap* map, bool enable_tsdf_update=true);
+                      LabelTsdfMap* map, bool enable_tsdf_update = true);
 
   // Label propagation.
   void computeSegmentLabelCandidates(
@@ -149,7 +149,8 @@ class LabelTsdfIntegrator : public MergedTsdfIntegrator {
   void updateLabelLayerWithStoredBlocks();
 
   // Updates label_voxel. Thread safe.
-  void updateLabelVoxel(const Point& point_G, const Label& label,
+  // If return true, label is changed. if false, not changed.
+  bool updateLabelVoxel(const Point& point_G, const Label& label,
                         LabelVoxel* label_voxel,
                         const LabelConfidence& confidence = 1u);
 
