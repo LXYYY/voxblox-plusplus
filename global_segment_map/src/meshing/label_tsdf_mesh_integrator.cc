@@ -298,6 +298,8 @@ void MeshLabelIntegrator::updateMeshColor(const Block<LabelVoxel>& label_block,
     } else {
       const typename Block<LabelVoxel>::ConstPtr neighbor_block =
           label_layer_const_ptr_->getBlockPtrByCoordinates(vertex);
+      if (neighbor_block == nullptr)
+        continue;
       const LabelVoxel& voxel = neighbor_block->getVoxelByCoordinates(vertex);
       switch (label_tsdf_config_.color_scheme) {
         case kLabel: {

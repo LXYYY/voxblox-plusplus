@@ -6,7 +6,12 @@ namespace voxblox {
 
 void LabelColorMap::getColor(const Label& label, Color* color) {
   CHECK_NOTNULL(color);
-  CHECK_NE(label, 0u);
+  // CHECK_NE(label, 0u);
+  // if label == 0, give it a gray color
+  if (label == 0u) {
+    *color = Color::Gray();
+    return;
+  }
 
   std::map<Label, Color>::iterator label_color_map_it;
   {

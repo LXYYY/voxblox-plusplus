@@ -627,6 +627,8 @@ void LabelTsdfIntegrator::integrateVoxel(
                        merged_label_confidence);
       label_block->updated().set(voxblox::Update::kLabel);
       label_block->updated().set(voxblox::Update::kMeshLabel);
+
+      // TODO(mikexyl): need to set tsdf block updated
     }
   }
 }
