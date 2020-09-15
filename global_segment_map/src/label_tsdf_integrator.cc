@@ -680,7 +680,10 @@ void LabelTsdfIntegrator::integrateRays(
   }
 
   timing::Timer insertion_timer("inserting_missed_blocks");
-  updateLayerWithStoredBlocks();
+  if (label_tsdf_config_.enable_tsdf_update)
+    updateLayerWithStoredBlocks();
+  else
+    temp_block_map_.clear();
   updateLabelLayerWithStoredBlocks();
 
   insertion_timer.Stop();
