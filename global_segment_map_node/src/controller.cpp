@@ -308,11 +308,15 @@ Controller::Controller(
       publish_object_bbox_(false),
       use_label_propagation_(true),
       enable_tsdf_update_(true),
-      only_mesh_label_updated_blocks_(!enable_tsdf_update_) {
+      only_mesh_label_updated_blocks_(true) {
   bool verbose_log = false;
   node_handle_private_.param<bool>("debug/verbose_log", verbose_log,
                                    verbose_log);
-
+  node_handle_private_.param<bool>("sm/enable_tsdf_update", enable_tsdf_update_,
+                                   enable_tsdf_update_);
+  node_handle_private_.param<bool>("sm/mesh/only_mesh_label_updated_blocks",
+                                   only_mesh_label_updated_blocks_,
+                                   only_mesh_label_updated_blocks_);
   if (verbose_log) {
     FLAGS_stderrthreshold = 0;
   }
@@ -324,7 +328,6 @@ Controller::Controller(
   if (map != nullptr) {
     map_->setTsdfLayer(map->getTsdfLayerPtr());
     enable_tsdf_update_ = false;
-    only_mesh_label_updated_blocks_ = !enable_tsdf_update_;
   }
   integrator_.reset(new LabelTsdfIntegrator(tsdf_integrator_config_,
                                             label_tsdf_integrator_config_,

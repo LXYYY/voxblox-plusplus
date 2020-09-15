@@ -66,32 +66,35 @@ class LabelTsdfIntegrator : public MergedTsdfIntegrator {
                       const LabelTsdfConfig& label_tsdf_config,
                       LabelTsdfMap* map, bool enable_tsdf_update = true);
 
+  virtual ~LabelTsdfIntegrator(){};
+
   // Label propagation.
-  void computeSegmentLabelCandidates(
+  virtual void computeSegmentLabelCandidates(
       Segment* segment, std::map<Label, std::map<Segment*, size_t>>* candidates,
       std::map<Segment*, std::vector<Label>>* segment_merge_candidates,
       const std::set<Label>& assigned_labels = std::set<Label>());
 
-  void decideLabelPointClouds(
+  virtual void decideLabelPointClouds(
       std::vector<voxblox::Segment*>* segments_to_integrate,
       std::map<voxblox::Label, std::map<voxblox::Segment*, size_t>>* candidates,
       std::map<Segment*, std::vector<Label>>* segment_merge_candidates);
 
   // Segment integration.
-  void integratePointCloud(const Transformation& T_G_C,
-                           const Pointcloud& points_C, const Colors& colors,
-                           const Label& label, const bool freespace_points);
+  virtual void integratePointCloud(const Transformation& T_G_C,
+                                   const Pointcloud& points_C,
+                                   const Colors& colors, const Label& label,
+                                   const bool freespace_points);
 
   // Segment merging.
   // Not thread safe.
-  void mergeLabels(LLSet* merges_to_publish);
+  virtual void mergeLabels(LLSet* merges_to_publish);
 
   // Object database.
-  void getLabelsToPublish(
+  virtual void getLabelsToPublish(
       std::vector<voxblox::Label>* segment_labels_to_publish);
 
-  Transformation getIcpRefined_T_G_C(const Transformation& T_G_C_init,
-                                     const Pointcloud& point_cloud);
+  virtual Transformation getIcpRefined_T_G_C(const Transformation& T_G_C_init,
+                                             const Pointcloud& point_cloud);
 
  protected:
   // Label propagation.
