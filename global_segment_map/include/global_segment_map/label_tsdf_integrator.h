@@ -96,6 +96,10 @@ class LabelTsdfIntegrator : public MergedTsdfIntegrator {
   virtual Transformation getIcpRefined_T_G_C(const Transformation& T_G_C_init,
                                              const Pointcloud& point_cloud);
 
+  inline SemanticLabel getSemanticLabel(const Label& label) {
+    return semantic_instance_label_fusion_ptr_->getSemanticLabel(label);
+  }
+
  protected:
   // Label propagation.
   // Fetch the next segment label pair which has overall
