@@ -100,6 +100,10 @@ class LabelTsdfIntegrator : public MergedTsdfIntegrator {
     return semantic_instance_label_fusion_ptr_->getSemanticLabel(label);
   }
 
+  inline InstanceLabel getInstanceLabel(const Label& label) {
+    return semantic_instance_label_fusion_ptr_->getInstanceLabel(label);
+  }
+
  protected:
   // Label propagation.
   // Fetch the next segment label pair which has overall
