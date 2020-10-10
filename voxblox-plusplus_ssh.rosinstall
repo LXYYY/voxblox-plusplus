@@ -43,3 +43,7 @@
 - git:
     local-name: vpp_msgs
     uri: git@github.com:ethz-asl/vpp_msgs.git
+- git: 
+    local-name: voxblox
+    uri: git@github.com:LXYYY/voxblox-plusplus.git
+    version: feature/maskgraph
